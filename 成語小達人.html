@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成語小達人 - 線上互動成語測驗</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fffbebe6',
+                            100: '#fef3c7',
+                            400: '#fbbf24',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                        },
+                        candy: {
+                            blue: '#38bdf8',
+                            purple: '#a855f7',
+                            pink: '#ec4899',
+                            green: '#22c55e'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Comic Sans MS"', '"Chalkboard SE"', '"Microsoft JhengHei"', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Canvas Confetti Library for Victory Screen -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* Custom animations and touch styles */
+        .bounce-gentle {
+            animation: bounceGentle 2s infinite;
+        }
+        @keyframes bounceGentle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .pulse-highlight {
+            animation: pulseHighlight 1.5s infinite;
+        }
+        @keyframes pulseHighlight {
+            0%, 100% { border-color: #38bdf8; box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+            50% { border-color: #0284c7; box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+        }
+
+        /* Prevent unwanted text selection during drag/drop */
+        .no-select {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-amber-50 min-h-screen font-sans text-slate-800 antialiased selection:bg-amber-200 no-select">
+
+    <div id="app" class="max-w-4xl mx-auto px-4 py-4 min-h-screen flex flex-col justify-between">
+        <!-- APP HEADER (Score, Progress, Audio Control) -->
+        <header class="bg-white rounded-3xl p-4 shadow-md border-2 border-amber-200 mb-4 sticky top-2 z-30">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <!-- Title & Logo -->
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 bg-gradient-to-tr from-amber-400 to-orange-400 rounded-2xl flex items-center justify-center text-2xl shadow-sm transform -rotate-3">
+                        🎓
+                    </div>
+                    <div>
+                        <h1 class="text-xl md:text-2xl font-black text-amber-600 tracking-wide flex items-center gap-2">
+                            成語小達人 <span class="text-xs bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full font-bold">國小進階版</span>
+                        </h1>
+                        <p class="text-xs text-slate-500 font-medium">拖曳成語卡片或點擊選取填入句子中</p>
+                    </div>
+                </div>
+
+                <!-- Game Progress & Audio Controls -->
+                <div class="flex items-center space-x-4 ml-auto">
+                    <!-- Audio Toggle -->
+                    <button id="btn-audio" onclick="toggleAudio()" class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-xl transition transform active:scale-95 shadow-inner" title="切換音效">
+                        🔊
+                    </button>
+
+                    <!-- Progress Indicator -->
+                    <div class="text-right">
+                        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">完成進度</div>
+                        <div class="text-sm font-black text-amber-600">
+                            <span id="stat-filled-count">0</span> / 30 題
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Overall Progress Bar -->
+            <div class="mt-3 w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200">
+                <div id="top-progress-bar" class="bg-gradient-to-r from-amber-400 via-orange-400 to-pink-500 h-full w-0 transition-all duration-500 ease-out rounded-full"></div>
+            </div>
+        </header>
+
+        <!-- MAIN GAME CONTAINER (Swapping Views via JS) -->
+        <main id="main-content" class="flex-grow flex flex-col justify-center">
+            <!-- Dynamic Content Rendered Here: Quiz Stage or Results Page -->
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="mt-6 text-center text-xs text-slate-400 py-2 border-t border-amber-200/60">
+            108學年度成語語文能力綜合測驗 • 線上互動學習系統
+        </footer>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        /* -------------------------------------------------------------------------- */
+        /* 1. DATA DEFINITIONS (15 Idioms & 30 Sentences with Meanings)               */
+        /* -------------------------------------------------------------------------- */
+        const IDIOMS_DATA = [
+            { id: 1, name: '一介不取', meaning: '介，通「芥」，小草，引申微小之物；形容絲毫都不收取，非常廉潔奉公。' },
+            { id: 2, name: '一日三秋', meaning: '一天沒見面，就像隔了三年一樣。比喻思念之情非常殷切。' },
+            { id: 3, name: '一鳴驚人', meaning: '比喻平時默默無聞，潛藏才華，一旦有機會施展，果真做出驚人的成績。' },
+            { id: 4, name: '二八年華', meaning: '二八即十六歲（2×8=16）。用以形容少女正值青春美麗的黃金時期。' },
+            { id: 5, name: '三人成虎', meaning: '比喻謠言或不實傳聞經過多人散播後，就會使人信以為真。' },
+            { id: 6, name: '投桃報李', meaning: '比喻朋友之間友好往來、禮尚往來，互相餽贈回報。' },
+            { id: 7, name: '宜室宜家', meaning: '指女子具備婦德，能使家庭和樂融融、夫婦和諧相處。' },
+            { id: 8, name: '才高八斗', meaning: '比喻才華洋溢、學問高深，超越一般眾人。' },
+            { id: 9, name: '伯樂相馬', meaning: '比喻善於發現、識別與選拔優秀的人才。' },
+            { id: 10, name: '沉魚落雁', meaning: '形容女子容貌極為美麗出眾，連魚雁看了都驚豔下沉落飛。' },
+            { id: 11, name: '人一己百', meaning: '別人用一分努力學會的事，自己用百倍努力去實踐。用以勉勵勤能補拙。' },
+            { id: 12, name: '江郎才盡', meaning: '比喻才情文思衰退減弱，無法再寫出好作品。' },
+            { id: 13, name: '行雲流水', meaning: '比喻文章或藝術表現揮灑自如，非常自然流暢，毫不呆板。' },
+            { id: 14, name: '千里鵝毛', meaning: '比喻禮物雖然微薄輕小，但贈送者的情意卻非常深厚。' },
+            { id: 15, name: '空穴來風', meaning: '比喻消息事出有因，流言乘隙而入；現多指無根據的謠言傳聞。' }
+        ];
+
+        const RAW_QUESTIONS = [
+            // 一介不取
+            { id: 1, idiomId: 1, idiom: '一介不取', text: '他是一個［＿］的清官，深受民眾的愛戴。' },
+            { id: 2, idiomId: 1, idiom: '一介不取', text: '人窮志不窮，對於非分之財，我［＿］。' },
+            // 一日三秋
+            { id: 3, idiomId: 2, idiom: '一日三秋', text: '他們夫妻倆結婚後，聚少離多，過的是牛郎織女［＿］的生活。' },
+            { id: 4, idiomId: 2, idiom: '一日三秋', text: '才從高中畢業分別沒有幾天，就接到同學一堆的卡片，看來大家都［＿］的感覺呢！' },
+            // 一鳴驚人
+            { id: 5, idiomId: 3, idiom: '一鳴驚人', text: '你想要在比賽中［＿］，平常得加倍努力才行。' },
+            { id: 6, idiomId: 3, idiom: '一鳴驚人', text: '他深具潛力，這次比賽也許會［＿］也說不定。' },
+            // 二八年華
+            { id: 7, idiomId: 4, idiom: '二八年華', text: '她正值［＿］，青春貌美，人見人愛。' },
+            { id: 8, idiomId: 4, idiom: '二八年華', text: '正值［＿］、青春洋溢的她，無法體會老人的孤寂心情。' },
+            // 三人成虎
+            { id: 9, idiomId: 5, idiom: '三人成虎', text: '謠言的可怕就在於［＿］，會使人弄不清真假。' },
+            { id: 10, idiomId: 5, idiom: '三人成虎', text: '明明是無中生有的事，往往謠言一傳，就會［＿］，真是人言可畏！' },
+            // 投桃報李
+            { id: 11, idiomId: 6, idiom: '投桃報李', text: '鄰居之間，假如大家都能［＿］，往來自然會比較密切。' },
+            { id: 12, idiomId: 6, idiom: '投桃報李', text: '朋友間要懂得［＿］，才不會失了禮節。' },
+            // 宜室宜家
+            { id: 13, idiomId: 7, idiom: '宜室宜家', text: '她是位［＿］的賢妻良母，深得夫家的喜愛。' },
+            { id: 14, idiomId: 7, idiom: '宜室宜家', text: '她賢慧又美貌，實在堪稱［＿］！' },
+            // 才高八斗
+            { id: 15, idiomId: 8, idiom: '才高八斗', text: '他演講時，博徵古今，真是［＿］。' },
+            { id: 16, idiomId: 8, idiom: '才高八斗', text: '他空有［＿］的學問，一到緊要關頭卻總是連話都說不出來。' },
+            // 伯樂相馬
+            { id: 17, idiomId: 9, idiom: '伯樂相馬', text: '他徵選新職員時，就如同［＿］，總是可以選到最適當的人選。' },
+            { id: 18, idiomId: 9, idiom: '伯樂相馬', text: '選拔人才時，最需要［＿］的眼光，才不會選到無用之材。' },
+            // 沉魚落雁
+            { id: 19, idiomId: 10, idiom: '沉魚落雁', text: '張小姐長得［＿］，難怪追求她的人大排長龍。' },
+            { id: 20, idiomId: 10, idiom: '沉魚落雁', text: '心地不善良的人，縱使有［＿］之貌，也不算是真正的美。' },
+            // 人一己百
+            { id: 21, idiomId: 11, idiom: '人一己百', text: '我們要有［＿］的精神，並持之以恆，就會有一番作為。' },
+            { id: 22, idiomId: 11, idiom: '人一己百', text: '即使受到大家的嘲笑，他仍然不放棄夢想，秉持著［＿］的態度，繼續努力。' },
+            // 江郎才盡
+            { id: 23, idiomId: 12, idiom: '江郎才盡', text: '作家難免會有文思枯竭、［＿］的時候。' },
+            { id: 24, idiomId: 12, idiom: '江郎才盡', text: '有些時候之所以會感到［＿］，也許是因為我們對生命的熱情消退了。' },
+            // 行雲流水
+            { id: 25, idiomId: 13, idiom: '行雲流水', text: '這篇文章的筆法如［＿］，動人心懷。' },
+            { id: 26, idiomId: 13, idiom: '行雲流水', text: '看到這位作家［＿］、自然生動的佳作，真是人生一大享受。' },
+            // 千里鵝毛
+            { id: 27, idiomId: 14, idiom: '千里鵝毛', text: '我到金門旅遊，特地帶回金門貢糖相送，［＿］，敬請笑納。' },
+            { id: 28, idiomId: 14, idiom: '千里鵝毛', text: '小朋友捐給災民的錢雖然不多，卻是［＿］，愛心感人。' },
+            // 空穴來風
+            { id: 29, idiomId: 15, idiom: '空穴來風', text: '網路上散播一些消息，有時純屬［＿］，各位切勿相信。' },
+            { id: 30, idiomId: 15, idiom: '空穴來風', text: '流言雖未可輕信，但畢竟［＿］，事出總有因。' }
+        ];
+
+        /* -------------------------------------------------------------------------- */
+        /* 2. STATE MANAGEMENT & WEB AUDIO SYNTH                                      */
+        /* -------------------------------------------------------------------------- */
+        const QUESTIONS_PER_STAGE = 5;
+        const TOTAL_STAGES = 6;
+
+        let gameState = {
+            questions: [],          // Current randomized question list (30)
+            userAnswers: {},        // Map: questionId -> idiom String
+            currentStage: 0,        // 0 to 5 (Stages 1..6)
+            selectedIdiom: null,    // For Tap-to-select mode
+            isAudioMuted: false,
+            isSubmitted: false,
+            score: 0
+        };
+
+        // Web Audio API Synthesizer (No external MP3 files needed!)
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playPop() {
+                if (gameState.isAudioMuted) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playSnap() {
+                if (gameState.isAudioMuted) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, this.ctx.currentTime); // C5
+                osc.frequency.exponentialRampToValueAtTime(659.25, this.ctx.currentTime + 0.12); // E5
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+
+            playStageClear() {
+                if (gameState.isAudioMuted) return;
+                this.init();
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.08);
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + idx * 0.08);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.08 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + idx * 0.08);
+                    osc.stop(this.ctx.currentTime + idx * 0.08 + 0.2);
+                });
+            }
+
+            playVictory() {
+                if (gameState.isAudioMuted) return;
+                this.init();
+                const fanfare = [
+                    { freq: 523.25, duration: 0.15 }, // C5
+                    { freq: 659.25, duration: 0.15 }, // E5
+                    { freq: 783.99, duration: 0.15 }, // G5
+                    { freq: 1046.50, duration: 0.4 }  // C6
+                ];
+                let startTime = this.ctx.currentTime;
+                fanfare.forEach((item) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(item.freq, startTime);
+                    gain.gain.setValueAtTime(0.35, startTime);
+                    gain.gain.linearRampToValueAtTime(0.01, startTime + item.duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(startTime);
+                    osc.stop(startTime + item.duration);
+                    startTime += item.duration + 0.03;
+                });
+            }
+        }
+
+        const audioSfx = new SoundEffects();
+
+        /* -------------------------------------------------------------------------- */
+        /* 3. INITIALIZATION & UTILITIES                                              */
+        /* -------------------------------------------------------------------------- */
+        function shuffleArray(arr) {
+            const array = [...arr];
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function initGame() {
+            gameState.questions = shuffleArray(RAW_QUESTIONS);
+            gameState.userAnswers = {};
+            gameState.currentStage = 0;
+            gameState.selectedIdiom = null;
+            gameState.isSubmitted = false;
+            gameState.score = 0;
+
+            renderQuizStage();
+            updateTopHeader();
+        }
+
+        function toggleAudio() {
+            gameState.isAudioMuted = !gameState.isAudioMuted;
+            const btn = document.getElementById('btn-audio');
+            btn.innerText = gameState.isAudioMuted ? '🔇' : '🔊';
+            btn.classList.toggle('bg-red-100', gameState.isAudioMuted);
+            if (!gameState.isAudioMuted) audioSfx.playPop();
+        }
+
+        function updateTopHeader() {
+            const filledCount = Object.keys(gameState.userAnswers).length;
+            document.getElementById('stat-filled-count').innerText = filledCount;
+
+            const progressPct = Math.round((filledCount / 30) * 100);
+            document.getElementById('top-progress-bar').style.width = `${progressPct}%`;
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* 4. RENDER QUIZ STAGE (5 Questions per stage)                               */
+        /* -------------------------------------------------------------------------- */
+        function renderQuizStage() {
+            const mainContent = document.getElementById('main-content');
+            const startIdx = gameState.currentStage * QUESTIONS_PER_STAGE;
+            const stageQuestions = gameState.questions.slice(startIdx, startIdx + QUESTIONS_PER_STAGE);
+
+            let html = `
+                <div class="bg-white rounded-3xl p-5 md:p-6 shadow-xl border-2 border-amber-200">
+                    <!-- Stage Banner & Controls -->
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-100">
+                        <div class="flex items-center space-x-2">
+                            <span class="bg-amber-500 text-white font-black text-sm px-3 py-1 rounded-full shadow-sm">
+                                第 ${gameState.currentStage + 1} / ${TOTAL_STAGES} 關
+                            </span>
+                            <span class="text-xs font-bold text-slate-400">
+                                (第 ${startIdx + 1} ～ ${startIdx + stageQuestions.length} 題)
+                            </span>
+                        </div>
+
+                        <!-- Stage Quick Tabs -->
+                        <div class="flex items-center space-x-1.5 overflow-x-auto py-1">
+                            ${Array.from({ length: TOTAL_STAGES }).map((_, i) => {
+                                const isCurrent = i === gameState.currentStage;
+                                const stageFilled = gameState.questions.slice(i * 5, i * 5 + 5).every(q => gameState.userAnswers[q.id]);
+                                return `
+                                    <button onclick="goToStage(${i})" class="w-8 h-8 rounded-xl font-black text-xs transition flex items-center justify-center ${
+                                        isCurrent ? 'bg-amber-500 text-white shadow-md scale-105 ring-2 ring-amber-300' :
+                                        stageFilled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' :
+                                        'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                    }">
+                                        ${i + 1}
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Question Cards List -->
+                    <div class="space-y-4 mb-6">
+            `;
+
+            stageQuestions.forEach((q, idx) => {
+                const globalIndex = startIdx + idx + 1;
+                const filledIdiom = gameState.userAnswers[q.id];
+                const parts = q.text.split('［＿］');
+
+                html += `
+                    <div class="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/70 hover:border-amber-300 transition shadow-sm">
+                        <div class="flex items-start space-x-3">
+                            <span class="bg-amber-200 text-amber-800 font-black text-xs px-2.5 py-1 rounded-lg shrink-0 mt-0.5">
+                                ${globalIndex}
+                            </span>
+                            <div class="text-base md:text-lg font-bold text-slate-800 leading-relaxed flex-grow">
+                                <span>${parts[0]}</span>
+                                
+                                <!-- DROP ZONE SLOT -->
+                                <div id="drop-zone-${q.id}"
+                                     ondragover="handleDragOver(event)"
+                                     ondragleave="handleDragLeave(event)"
+                                     ondrop="handleDrop(event, ${q.id})"
+                                     onclick="handleSlotClick(${q.id})"
+                                     class="inline-flex items-center justify-center min-w-[130px] h-[40px] px-3 mx-1.5 align-middle rounded-xl transition cursor-pointer ${
+                                         filledIdiom 
+                                         ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-white font-black shadow-md border-2 border-amber-300 scale-105'
+                                         : 'bg-white border-2 border-dashed border-sky-400 text-sky-400 hover:bg-sky-50 pulse-highlight font-medium text-sm'
+                                     }">
+                                    ${filledIdiom 
+                                        ? `<span>${filledIdiom}</span> <span class="ml-1.5 text-xs opacity-75 hover:opacity-100">✕</span>` 
+                                        : (gameState.selectedIdiom ? '👉 點此填入' : '點擊或拖曳成語')}
+                                </div>
+
+                                <span>${parts[1] || ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+
+                    <!-- WORD BANK (Candidate Idiom Chips) -->
+                    <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>💡 候選成語庫</span>
+                                <span class="text-slate-400 font-normal">（共 15 個成語）</span>
+                            </h3>
+                            ${gameState.selectedIdiom ? `
+                                <button onclick="clearSelectedIdiom()" class="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md hover:bg-rose-100">
+                                    取消選擇 [${gameState.selectedIdiom}]
+                                </button>
+                            ` : ''}
+                        </div>
+
+                        <div class="flex flex-wrap gap-2.5">
+            `;
+
+            IDIOMS_DATA.forEach(idiomObj => {
+                const idiomName = idiomObj.name;
+                const isSelected = gameState.selectedIdiom === idiomName;
+
+                html += `
+                    <div draggable="true"
+                         ondragstart="handleDragStart(event, '${idiomName}')"
+                         onclick="handleIdiomChipClick('${idiomName}')"
+                         class="px-3.5 py-2 rounded-xl text-sm font-black transition cursor-pointer select-none shadow-sm flex items-center space-x-1 ${
+                             isSelected 
+                             ? 'bg-amber-500 text-white ring-4 ring-amber-300 transform scale-105 -rotate-1'
+                             : 'bg-white hover:bg-amber-100 text-slate-700 border-2 border-slate-200 hover:border-amber-300 active:scale-95'
+                         }">
+                        <span>${idiomName}</span>
+                    </div>
+                `;
+            });
+
+            html += `
+                        </div>
+                    </div>
+
+                    <!-- PAGE NAVIGATION CONTROLS -->
+                    <div class="mt-6 flex items-center justify-between pt-4 border-t border-slate-100">
+                        <button onclick="changeStage(-1)" 
+                                ${gameState.currentStage === 0 ? 'disabled class="opacity-40 cursor-not-allowed px-4 py-2 bg-slate-200 text-slate-500 rounded-xl font-bold text-sm"' : 'class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition active:scale-95"'}>
+                            ⬅ 上一關
+                        </button>
+
+                        <div class="text-xs font-bold text-slate-400 hidden sm:block">
+                            點擊成語後點擊題目空格即可填入
+                        </div>
+
+                        ${gameState.currentStage < TOTAL_STAGES - 1 ? `
+                            <button onclick="changeStage(1)" class="px-6 py-2.5 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl font-black text-sm shadow-md transition transform active:scale-95 flex items-center gap-1">
+                                下一關 ➡
+                            </button>
+                        ` : `
+                            <button onclick="submitExam()" class="px-7 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl font-black text-base shadow-lg transition transform active:scale-95 bounce-gentle flex items-center gap-1.5">
+                                🚀 完成交卷
+                            </button>
+                        `}
+                    </div>
+                </div>
+            `;
+
+            mainContent.innerHTML = html;
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* 5. INTERACTION HANDLERS (Drag & Drop + Tap to Select)                     */
+        /* -------------------------------------------------------------------------- */
+        function handleDragStart(e, idiomName) {
+            audioSfx.playPop();
+            e.dataTransfer.setData('text/plain', idiomName);
+            gameState.selectedIdiom = idiomName;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            const zone = e.currentTarget;
+            zone.classList.add('bg-sky-100', 'border-sky-500');
+        }
+
+        function handleDragLeave(e) {
+            const zone = e.currentTarget;
+            zone.classList.remove('bg-sky-100', 'border-sky-500');
+        }
+
+        function handleDrop(e, qId) {
+            e.preventDefault();
+            const idiomName = e.dataTransfer.getData('text/plain') || gameState.selectedIdiom;
+            if (idiomName) {
+                fillSlot(qId, idiomName);
+            }
+        }
+
+        function handleIdiomChipClick(idiomName) {
+            audioSfx.playPop();
+            if (gameState.selectedIdiom === idiomName) {
+                gameState.selectedIdiom = null; // Toggle off
+            } else {
+                gameState.selectedIdiom = idiomName;
+            }
+            renderQuizStage();
+        }
+
+        function clearSelectedIdiom() {
+            gameState.selectedIdiom = null;
+            renderQuizStage();
+        }
+
+        function handleSlotClick(qId) {
+            if (gameState.userAnswers[qId]) {
+                // If slot is already filled, click clears it
+                audioSfx.playPop();
+                delete gameState.userAnswers[qId];
+                updateTopHeader();
+                renderQuizStage();
+            } else if (gameState.selectedIdiom) {
+                // Fill selected idiom
+                fillSlot(qId, gameState.selectedIdiom);
+            }
+        }
+
+        function fillSlot(qId, idiomName) {
+            audioSfx.playSnap();
+            gameState.userAnswers[qId] = idiomName;
+            gameState.selectedIdiom = null; // Reset selection after fill
+            updateTopHeader();
+            renderQuizStage();
+        }
+
+        function changeStage(delta) {
+            const nextStage = gameState.currentStage + delta;
+            if (nextStage >= 0 && nextStage < TOTAL_STAGES) {
+                audioSfx.playPop();
+                gameState.currentStage = nextStage;
+                gameState.selectedIdiom = null;
+                renderQuizStage();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        function goToStage(stageIdx) {
+            audioSfx.playPop();
+            gameState.currentStage = stageIdx;
+            gameState.selectedIdiom = null;
+            renderQuizStage();
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* 6. SUBMISSION & RESULTS CALCULATION                                        */
+        /* -------------------------------------------------------------------------- */
+        function submitExam() {
+            const filledCount = Object.keys(gameState.userAnswers).length;
+
+            if (filledCount < 30) {
+                const unansweredCount = 30 - filledCount;
+                if (!confirm(`您還有 ${unansweredCount} 道題目未填寫完成，確定要現在交卷嗎？`)) {
+                    return;
+                }
+            }
+
+            // Calculate Score
+            let correctCount = 0;
+            gameState.questions.forEach(q => {
+                if (gameState.userAnswers[q.id] === q.idiom) {
+                    correctCount++;
+                }
+            });
+
+            // Score formula: 100 max points (each question ~3.33 pts)
+            gameState.score = Math.round((correctCount / 30) * 100);
+            gameState.isSubmitted = true;
+
+            // Trigger Victory Sound & Confetti
+            audioSfx.playVictory();
+            if (gameState.score >= 60 && typeof confetti === 'function') {
+                confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+            }
+
+            renderResultsPage(correctCount);
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* 7. RENDER RESULTS & DETAILED ERROR REVIEW                                  */
+        /* -------------------------------------------------------------------------- */
+        function renderResultsPage(correctCount) {
+            const mainContent = document.getElementById('main-content');
+            const score = gameState.score;
+            const wrongCount = 30 - correctCount;
+
+            // Badge & Star calculation
+            let stars = 1;
+            let title = '再接再厲小勇士';
+            let badgeBg = 'bg-slate-500';
+
+            if (score === 100) {
+                stars = 5;
+                title = '🌟 成語神仙大師 🌟';
+                badgeBg = 'bg-gradient-to-r from-amber-400 to-yellow-500';
+            } else if (score >= 90) {
+                stars = 5;
+                title = '🏆 成語小達人';
+                badgeBg = 'bg-amber-500';
+            } else if (score >= 75) {
+                stars = 4;
+                title = '👍 成語高能手';
+                badgeBg = 'bg-sky-500';
+            } else if (score >= 60) {
+                stars = 3;
+                title = '📖 成語潛力新星';
+                badgeBg = 'bg-purple-500';
+            } else {
+                stars = 2;
+                title = '💪 繼續努力小勇士';
+                badgeBg = 'bg-rose-500';
+            }
+
+            // Build list of wrong questions for detailed review
+            const wrongQuestions = gameState.questions.filter(q => gameState.userAnswers[q.id] !== q.idiom);
+
+            let html = `
+                <div class="space-y-6">
+                    <!-- SCORE SUMMARY CARD -->
+                    <div class="bg-white rounded-3xl p-6 md:p-8 shadow-xl border-2 border-amber-200 text-center relative overflow-hidden">
+                        <div class="absolute -top-10 -right-10 w-40 h-40 bg-amber-100 rounded-full blur-2xl opacity-50 pointer-events-none"></div>
+
+                        <!-- Stars -->
+                        <div class="flex justify-center space-x-1.5 mb-2 text-3xl md:text-4xl">
+                            ${Array.from({ length: 5 }).map((_, i) => `
+                                <span class="${i < stars ? 'text-amber-400 scale-110' : 'text-slate-200'} transition transform">★</span>
+                            `).join('')}
+                        </div>
+
+                        <!-- Title Badge -->
+                        <div class="inline-block ${badgeBg} text-white font-black text-sm px-4 py-1.5 rounded-full shadow-md mb-4 tracking-wider">
+                            ${title}
+                        </div>
+
+                        <!-- Big Score Display -->
+                        <div class="mb-6">
+                            <span class="text-6xl md:text-7xl font-black text-amber-600 tracking-tight">${score}</span>
+                            <span class="text-xl font-bold text-slate-400"> / 100分</span>
+                        </div>
+
+                        <!-- Stats Grid -->
+                        <div class="grid grid-cols-3 gap-3 max-w-md mx-auto bg-amber-50/70 p-4 rounded-2xl border border-amber-200/60 mb-6">
+                            <div class="text-center">
+                                <div class="text-xs font-bold text-slate-400">總題數</div>
+                                <div class="text-lg font-black text-slate-700">30 題</div>
+                            </div>
+                            <div class="text-center border-x border-amber-200/80">
+                                <div class="text-xs font-bold text-emerald-600">答對題數</div>
+                                <div class="text-lg font-black text-emerald-600">${correctCount} 題</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-xs font-bold text-rose-500">答錯題數</div>
+                                <div class="text-lg font-black text-rose-500">${wrongCount} 題</div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex flex-wrap justify-center gap-3">
+                            <button onclick="initGame()" class="px-7 py-3 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white rounded-2xl font-black text-base shadow-lg transition transform active:scale-95 flex items-center gap-2">
+                                🔄 重新挑戰 (打散題目)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ERROR REVIEW SECTION -->
+                    <div class="bg-white rounded-3xl p-6 md:p-8 shadow-xl border-2 border-slate-200">
+                        <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                            <h2 class="text-lg md:text-xl font-black text-slate-800 flex items-center gap-2">
+                                <span>📝 測驗檢討區</span>
+                                ${wrongCount > 0 
+                                    ? `<span class="text-xs bg-rose-100 text-rose-700 font-bold px-2.5 py-0.5 rounded-full">需要加強 ${wrongCount} 題</span>`
+                                    : `<span class="text-xs bg-emerald-100 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full">太棒了！全對！</span>`}
+                            </h2>
+                        </div>
+            `;
+
+            if (wrongCount === 0) {
+                html += `
+                    <div class="text-center py-12 bg-emerald-50/60 rounded-2xl border border-emerald-200">
+                        <div class="text-5xl mb-3">🎉</div>
+                        <h3 class="text-lg font-black text-emerald-800 mb-1">完美的表現！恭喜全對！</h3>
+                        <p class="text-xs text-emerald-600 font-medium">你已經完全掌握這15個成語的用法了！</p>
+                    </div>
+                `;
+            } else {
+                html += `<div class="space-y-4">`;
+
+                wrongQuestions.forEach((q, idx) => {
+                    const userAnswer = gameState.userAnswers[q.id] || '未作答';
+                    const idiomObj = IDIOMS_DATA.find(i => i.name === q.idiom);
+                    const parts = q.text.split('［＿］');
+
+                    html += `
+                        <div class="p-4 md:p-5 rounded-2xl bg-slate-50 border-2 border-slate-200 space-y-3">
+                            <!-- Question sentence -->
+                            <div class="flex items-start space-x-2">
+                                <span class="bg-rose-500 text-white font-black text-xs px-2 py-0.5 rounded-md shrink-0 mt-0.5">
+                                    錯題 ${idx + 1}
+                                </span>
+                                <div class="text-base font-bold text-slate-800 leading-relaxed">
+                                    <span>${parts[0]}</span>
+                                    <span class="inline-block px-2 py-0.5 mx-1 rounded-lg bg-rose-100 text-rose-700 border border-rose-300 font-black">
+                                        ${userAnswer}
+                                    </span>
+                                    <span>${parts[1] || ''}</span>
+                                </div>
+                            </div>
+
+                            <!-- Answers comparison -->
+                            <div class="flex flex-wrap items-center gap-3 text-sm bg-white p-3 rounded-xl border border-slate-200">
+                                <div class="flex items-center space-x-1.5">
+                                    <span class="text-xs font-bold text-slate-400">您的答案:</span>
+                                    <span class="font-black text-rose-600 line-through">${userAnswer}</span>
+                                </div>
+                                <div class="text-slate-300">|</div>
+                                <div class="flex items-center space-x-1.5">
+                                    <span class="text-xs font-bold text-slate-400">正確成語:</span>
+                                    <span class="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">${q.idiom}</span>
+                                </div>
+                            </div>
+
+                            <!-- Idiom Meaning Box -->
+                            <div class="text-xs bg-amber-50/80 p-3 rounded-xl border border-amber-200 text-amber-900 leading-relaxed">
+                                <span class="font-black text-amber-700">📖 【${q.idiom}】詞義說明：</span>
+                                ${idiomObj ? idiomObj.meaning : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+            }
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            mainContent.innerHTML = html;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        /* -------------------------------------------------------------------------- */
+        /* 8. INITIAL STARTUP                                                         */
+        /* -------------------------------------------------------------------------- */
+        window.onload = function() {
+            initGame();
+        };
+    </script>
+</body>
+</html>
